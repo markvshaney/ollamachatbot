@@ -4,8 +4,7 @@ import { storage } from "./storage";
 import { insertMessageSchema } from "@shared/schema";
 import axios from "axios";
 import { z } from "zod";
-
-const OLLAMA_API_URL = process.env.OLLAMA_API_URL || "http://localhost:11434";
+import { OLLAMA_API_URL, debugLog } from "./config";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // API routes
@@ -44,6 +43,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Check Ollama API connection
+  app.get("/api/ollama/status", async (req, res) => {
+    try {
+      const response = await axios.get(`${OLLAMA_API_URL}/api/version`, { timeout: 5000 });
+      debugLog("Ollama status check:", response.data);
+      res.json({ 
+        connected: true, 
+        version: response.data.version,
+        url: OLLAMA_API_URL
+      });
+    } catch (error) {
+      debugLog("Ollama connection error:", error);
+      res.status(200).json({ 
+        connected: false,
+        url: OLLAMA_API_URL,
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // Ollama API proxy routes
   app.post("/api/ollama/chat", async (req, res) => {
     try {
@@ -53,6 +72,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Model and prompt are required" });
       }
 
+      debugLog("Sending request to Ollama:", { model, prompt });
       const response = await axios.post(`${OLLAMA_API_URL}/api/generate`, {
         model,
         prompt,
@@ -62,8 +82,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(response.data);
     } catch (error) {
       console.error("Error calling Ollama API:", error);
-      res.status(500).json({ 
-        message: "Failed to communicate with Ollama API",
+      
+      // Handle connection errors specifically
+      const axiosError = error as any;
+      const isConnRefused = axiosError.code === 'ECONNREFUSED' || axiosError.code === 'ENOTFOUND';
+      const statusCode = isConnRefused ? 503 : 500;
+      const message = isConnRefused 
+        ? `Could not connect to Ollama at ${OLLAMA_API_URL}`
+        : "Failed to communicate with Ollama API";
+        
+      res.status(statusCode).json({ 
+        message,
         details: error instanceof Error ? error.message : "Unknown error"
       });
     }
@@ -71,12 +100,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/ollama/models", async (req, res) => {
     try {
+      debugLog("Fetching Ollama models");
       const response = await axios.get(`${OLLAMA_API_URL}/api/tags`);
       res.json(response.data);
     } catch (error) {
       console.error("Error fetching Ollama models:", error);
-      res.status(500).json({ 
-        message: "Failed to fetch models from Ollama",
+      
+      // Handle connection errors specifically
+      const axiosError = error as any;
+      const isConnRefused = axiosError.code === 'ECONNREFUSED' || axiosError.code === 'ENOTFOUND';
+      const statusCode = isConnRefused ? 503 : 500;
+      const message = isConnRefused 
+        ? `Could not connect to Ollama at ${OLLAMA_API_URL}`
+        : "Failed to fetch models from Ollama";
+        
+      res.status(statusCode).json({ 
+        message,
         details: error instanceof Error ? error.message : "Unknown error"
       });
     }

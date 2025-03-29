@@ -3,11 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import ChatHistory from "@/components/chat/ChatHistory";
 import ChatInput from "@/components/chat/ChatInput";
 import ModelSelector from "@/components/chat/ModelSelector";
+import ConnectionStatus from "@/components/chat/ConnectionStatus";
 import { useTheme } from "@/components/ui/theme-provider";
 import { apiRequest } from "@/lib/queryClient";
 import { ChatMessage, ModelsResponse } from "@/types";
-import { Sun, Moon, MessageSquare } from "lucide-react";
+import { Sun, Moon, MessageSquare, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
 
 export default function ChatPage() {
   const { theme, setTheme } = useTheme();
@@ -15,6 +17,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("llama2");
   const [isLoading, setIsLoading] = useState(false);
+  const [isOllamaConnected, setIsOllamaConnected] = useState<boolean | null>(null);
 
   // Fetch available models from the Ollama API
   const { data: modelsData, isLoading: isLoadingModels, error: modelsError } = useQuery<ModelsResponse>({
@@ -23,35 +26,52 @@ export default function ChatPage() {
     refetchOnWindowFocus: false,
   });
 
-  // Fetch existing messages
-  const { data: existingMessages, isLoading: isLoadingMessages } = useQuery<ChatMessage[]>({
+  // Set up initial welcome message
+  const createWelcomeMessage = () => {
+    const welcomeMessage: ChatMessage = {
+      role: 'assistant',
+      content: "Hello! I'm your Ollama assistant. How can I help you today?",
+      model: selectedModel,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages([welcomeMessage]);
+    return welcomeMessage;
+  };
+
+  // Handle successful message fetch
+  const handleMessageFetchSuccess = (data: ChatMessage[]) => {
+    if (data.length > 0) {
+      setMessages(data);
+    } else {
+      // Add welcome message if no messages exist
+      const welcomeMessage = createWelcomeMessage();
+      sendMessageToServer(welcomeMessage);
+    }
+  };
+
+  // Handle connection status change
+  const handleConnectionChange = (connected: boolean) => {
+    setIsOllamaConnected(connected);
+  };
+
+  // Fetch existing messages with compatible TanStack Query v5 format
+  const { data: existingMessages, isLoading: isLoadingMessages } = useQuery({
     queryKey: ['/api/messages'],
-    onSuccess: (data) => {
-      if (data.length > 0) {
-        setMessages(data);
-      } else {
-        // Add welcome message if no messages exist
-        const welcomeMessage: ChatMessage = {
-          role: 'assistant',
-          content: "Hello! I'm your Ollama assistant. How can I help you today?",
-          model: selectedModel,
-          timestamp: new Date().toISOString(),
-        };
-        setMessages([welcomeMessage]);
-        sendMessageToServer(welcomeMessage);
-      }
-    },
-    onError: () => {
-      // Add welcome message if fetching fails
-      const welcomeMessage: ChatMessage = {
-        role: 'assistant',
-        content: "Hello! I'm your Ollama assistant. How can I help you today?",
-        model: selectedModel,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages([welcomeMessage]);
-    },
-  });
+  }) as { data: ChatMessage[] | undefined, isLoading: boolean };
+
+  // Handle message data loading
+  useEffect(() => {
+    if (existingMessages) {
+      handleMessageFetchSuccess(existingMessages);
+    }
+  }, [existingMessages]);
+
+  // Initialize with welcome message if messages fetch fails
+  useEffect(() => {
+    if (!isLoadingMessages && !existingMessages) {
+      createWelcomeMessage();
+    }
+  }, [isLoadingMessages, existingMessages]);
 
   // Send message to Ollama API
   const sendMessage = async (userInput: string) => {
@@ -133,6 +153,22 @@ export default function ChatPage() {
     setTheme(theme === 'light' ? 'dark' : 'light');
   };
 
+  // Check connection status when component mounts
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const response = await apiRequest('GET', '/api/ollama/status', undefined);
+        const data = await response.json();
+        setIsOllamaConnected(data.connected);
+      } catch (error) {
+        setIsOllamaConnected(false);
+        console.error("Error checking Ollama status:", error);
+      }
+    };
+    
+    checkStatus();
+  }, []);
+
   return (
     <div className="flex flex-col h-screen max-w-4xl mx-auto">
       {/* Header */}
@@ -143,7 +179,10 @@ export default function ChatPage() {
             Ollama Chat
           </h1>
         </div>
-        <div className="flex items-center">
+        <div className="flex items-center gap-2">
+          {/* Connection Status */}
+          <ConnectionStatus onConnectionChange={handleConnectionChange} />
+          
           {/* Model Selector */}
           <ModelSelector 
             selectedModel={selectedModel} 
@@ -166,6 +205,23 @@ export default function ChatPage() {
         </div>
       </header>
       
+      {/* Connection Warning */}
+      {isOllamaConnected === false && (
+        <div className="bg-yellow-50 dark:bg-yellow-900/30 border-l-4 border-yellow-400 p-4 mb-4">
+          <div className="flex items-start">
+            <AlertTriangle className="h-5 w-5 text-yellow-500 mr-2 mt-0.5" />
+            <div>
+              <p className="text-sm text-yellow-700 dark:text-yellow-200 font-medium">
+                Unable to connect to Ollama
+              </p>
+              <p className="text-xs text-yellow-600 dark:text-yellow-300 mt-1">
+                Make sure Ollama is running and accessible. Click the connection icon in the top right to configure.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Chat Container */}
       <ChatHistory 
         messages={messages} 
@@ -175,7 +231,7 @@ export default function ChatPage() {
       {/* Message Input */}
       <ChatInput 
         onSendMessage={sendMessage}
-        isLoading={isLoading}
+        isLoading={isLoading || isOllamaConnected === false}
         currentModel={selectedModel}
       />
     </div>
