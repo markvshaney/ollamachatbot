@@ -1,7 +1,7 @@
 // Server configuration
 
 // Ollama API configuration
-export const OLLAMA_API_URL = process.env.OLLAMA_API_URL || "http://localhost:11434";
+export const OLLAMA_API_URL = process.env.OLLAMA_API_URL || "http://127.0.0.1:11434";
 
 // Debug mode for verbose logging
 export const DEBUG = process.env.DEBUG === "true";
