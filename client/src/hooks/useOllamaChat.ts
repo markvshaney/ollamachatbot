@@ -39,7 +39,12 @@ export function useOllamaChat() {
       setMessages((prev) => [...prev, userMessage]);
       
       // Save user message
-      await saveMessage(userMessage);
+      try {
+        await saveMessage(userMessage);
+      } catch (error) {
+        console.error("Failed to save user message:", error);
+        // Continue even if saving fails
+      }
       
       // Send to Ollama API
       const response = await apiRequest('POST', '/api/ollama/chat', {
@@ -48,6 +53,10 @@ export function useOllamaChat() {
       });
       
       const data = await response.json();
+      
+      if (!data || !data.response) {
+        throw new Error("Invalid or empty response from Ollama API");
+      }
       
       // Create assistant message
       const assistantMessage: ChatMessage = {
@@ -61,7 +70,17 @@ export function useOllamaChat() {
       setMessages((prev) => [...prev, assistantMessage]);
       
       // Save assistant message
-      await saveMessage(assistantMessage);
+      try {
+        await saveMessage(assistantMessage);
+      } catch (error) {
+        console.error("Failed to save assistant message:", error);
+        // Show error but don't interrupt the flow
+        toast({
+          title: "Warning",
+          description: "Message displayed but could not be saved",
+          variant: "destructive",
+        });
+      }
       
       return data;
     } catch (error) {
@@ -80,13 +99,18 @@ export function useOllamaChat() {
   // Save message to the server
   const saveMessage = async (message: ChatMessage) => {
     try {
+      console.log("Saving message:", message);
       const response = await apiRequest('POST', '/api/messages', message);
-      return await response.json();
+      const data = await response.json();
+      console.log("Message saved successfully:", data);
+      return data;
     } catch (error) {
       console.error("Error saving message:", error);
       toast({
         title: "Error",
-        description: "Failed to save message",
+        description: error instanceof Error 
+          ? `Failed to save message: ${error.message}` 
+          : "Failed to save message",
         variant: "destructive",
       });
       return null;

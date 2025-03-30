@@ -1343,6 +1343,280 @@ Now let's check the schema and update it to make sure validation doesn't reject 
 
 _****_
 
+```diff
+  });
+  
+- export const insertMessageSchema = createInsertSchema(messages).pick({
+-   role: true,
+-   content: true,
+-   model: true,
+-   timestamp: true,
++ export const insertMessageSchema = z.object({
++   role: z.enum(['user', 'assistant']),
++   content: z.string(),
++   model: z.string(),
++   timestamp: z.string()
+  });
+  
+```
+
+---
+
+_****_
+
+Let's restart the server to apply these changes:
+
+---
+
+_****_
+
+```bash
+npm run dev
+```
+
+```
+
+> rest-express@1.0.0 dev
+> tsx server/index.ts
+9:03:30 PM [express] serving on port 3000
+9:03:32 PM [express] GET /api/messages 200 in 1ms :: []
+9:03:32 PM [express] GET /api/ollama/status 304 in 8ms :: {"connected":true,"version":"0.6.3","url":…
+9:03:32 PM [express] GET /api/ollama/status 304 in 1ms :: {"connected":true,"version":"0.6.3","url":…
+9:03:32 PM [express] GET /api/ollama/models 304 in 9ms :: {"models":[{"name":"deepseek-r1:70b","mode…
+9:03:32 PM [express] POST /api/messages 201 in 1ms :: {"role":"assistant","content":"Hello! I'm your…
+PS C:\Users\lbhei\source\ChatOllamaBot>
+```
+
+---
+
+_****_
+
+Great! The server is now running and the message saving is working correctly. Let's push these fixes to the repository:
+
+---
+
+_****_
+
+```bash
+git add .
+```
+
+```
+warning: in the working copy of '.specstory/history/.what-is-this.md', LF will be replaced by CRLF the next time G
+ LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/hooks/useOllamaChat.ts', LF will be replaced by CRLF the next time Git to
+uches it
+warning: in the working copy of 'server/config.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'shared/schema.ts', LF will be replaced by CRLF the next time Git touches it
+PS C:\Users\lbhei\source\ChatOllamaBot>
+```
+
+---
+
+_****_
+
+```bash
+git commit -m "Fix message save error and improve error handling"
+```
+
+```
+[main 29e2ff0] Fix message save error and improve error handling
+ 3 files changed, 349 insertions(+), 6 deletions(-)
+PS C:\Users\lbhei\source\ChatOllamaBot>
+```
+
+---
+
+_****_
+
+```bash
+git push
+```
+
+```
+Enumerating objects: 21, done.
+Counting objects: 100% (21/21), done.
+Delta compression using up to 32 threads
+Compressing objects: 100% (9/9), done.
+Writing objects: 100% (11/11), 2.98 KiB | 2.98 MiB/s, done.
+Total 11 (delta 7), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (7/7), completed with 7 local objects.
+To https://github.com/markvshaney/ollamachatbot.git
+   a035b2e..29e2ff0  main -> main
+PS C:\Users\lbhei\source\ChatOllamaBot>
+```
+
+---
+
+_****_
+
+I've fixed the "Failed to save message" error by making two key changes:
+
+1. Updated the schema validation:
+   - Replaced the auto-generated Drizzle schema with a custom Zod schema
+   - Added proper validation for the message fields, including an enum for role types
+
+2. Improved error handling in the client:
+   - Added better error reporting with toast notifications
+   - Properly handled API request errors
+
+The application should now be working correctly, allowing you to send and receive messages without seeing the "Failed to save message" error. The changes have been committed and pushed to your GitHub repository.
+
+To verify the fix is working, you can try sending messages through the chat interface. The messages should now save properly, and any potential errors will be displayed with informative toast notifications.
+
+---
+
+_**User**_
+
+sam3e error again
+
+---
+
+_**Assistant**_
+
+Let's investigate why you're still getting the same error. We need to check if there's an issue with the response formatting or the client-side error handling.
+
+---
+
+_****_
+
+```bash
+curl -X GET http://localhost:3000/api/messages
+```
+
+```
+PS C:\Users\lbhei\source\ChatOllamaBot> 
+
+```
+
+---
+
+_****_
+
+Let's modify the client-side code to better handle the error:
+
+---
+
+_****_
+
+```diff
+    data?: unknown | undefined,
+  ): Promise<Response> {
+-   const res = await fetch(url, {
+-     method,
+-     headers: data ? { "Content-Type": "application/json" } : {},
+-     body: data ? JSON.stringify(data) : undefined,
+-     credentials: "include",
+-   });
++   try {
++     const res = await fetch(url, {
++       method,
++       headers: data ? { "Content-Type": "application/json" } : {},
++       body: data ? JSON.stringify(data) : undefined,
++       credentials: "include",
++     });
+  
+-   await throwIfResNotOk(res);
+-   return res;
++     if (!res.ok) {
++       const errorText = await res.text();
++       console.error(`API Error (${res.status}):`, errorText);
++       throw new Error(`${res.status}: ${errorText || res.statusText}`);
++     }
++     
++     return res;
++   } catch (error) {
++     console.error(`API Request Error (${method} ${url}):`, error);
++     throw error;
++   }
+  }
+  
+```
+
+---
+
+_****_
+
+Now let's modify the useOllamaChat.ts to fix error handling and provide better error information:
+
+---
+
+_****_
+
+```diff
+    const saveMessage = async (message: ChatMessage) => {
+      try {
++       console.log("Saving message:", message);
+        const response = await apiRequest('POST', '/api/messages', message);
+-       return await response.json();
++       const data = await response.json();
++       console.log("Message saved successfully:", data);
++       return data;
+      } catch (error) {
+        console.error("Error saving message:", error);
+        toast({
+          title: "Error",
+-         description: "Failed to save message",
++         description: error instanceof Error 
++           ? `Failed to save message: ${error.message}` 
++           : "Failed to save message",
+          variant: "destructive",
+        });
+```
+
+---
+
+_****_
+
+Now let's check the server-side handling of the message data:
+
+---
+
+_****_
+
+```diff
+    app.post("/api/messages", async (req, res) => {
+      try {
++       console.log("Received message data:", req.body);
++       
++       // Try parsing with the schema
+        const messageData = insertMessageSchema.parse(req.body);
++       console.log("Validated message data:", messageData);
++       
+        const message = await storage.addMessage(messageData);
++       console.log("Saved message:", message);
++       
+        res.status(201).json(message);
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+-         res.status(400).json({ message: "Invalid message data", errors: error.errors });
++         console.error("Validation error:", error.errors);
++         res.status(400).json({ 
++           message: "Invalid message data", 
++           errors: error.errors,
++           receivedData: req.body 
++         });
+        } else {
+          console.error("Error adding message:", error);
+-         res.status(500).json({ message: "Failed to add message" });
++         res.status(500).json({ 
++           message: "Failed to add message",
++           error: error instanceof Error ? error.message : "Unknown error" 
++         });
+        }
+      }
+```
+
+---
+
+_****_
+
+Now let's restart the server to apply these changes:
+
+---
+
+_****_
+
 Cancelled
 
 ---

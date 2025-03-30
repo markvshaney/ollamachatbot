@@ -20,15 +20,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/messages", async (req, res) => {
     try {
+      console.log("Received message data:", JSON.stringify(req.body, null, 2));
+      
+      // Try parsing with the schema
       const messageData = insertMessageSchema.parse(req.body);
+      console.log("Validated message data:", JSON.stringify(messageData, null, 2));
+      
       const message = await storage.addMessage(messageData);
+      console.log("Saved message:", JSON.stringify(message, null, 2));
+      
       res.status(201).json(message);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid message data", errors: error.errors });
+        console.error("Validation error:", JSON.stringify(error.errors, null, 2));
+        res.status(400).json({ 
+          message: "Invalid message data", 
+          errors: error.errors,
+          receivedData: req.body 
+        });
       } else {
         console.error("Error adding message:", error);
-        res.status(500).json({ message: "Failed to add message" });
+        res.status(500).json({ 
+          message: "Failed to add message",
+          error: error instanceof Error ? error.message : "Unknown error" 
+        });
       }
     }
   });
