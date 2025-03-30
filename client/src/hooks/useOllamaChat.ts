@@ -80,9 +80,15 @@ export function useOllamaChat() {
   // Save message to the server
   const saveMessage = async (message: ChatMessage) => {
     try {
-      return await apiRequest('POST', '/api/messages', message);
+      const response = await apiRequest('POST', '/api/messages', message);
+      return await response.json();
     } catch (error) {
       console.error("Error saving message:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save message",
+        variant: "destructive",
+      });
       return null;
     }
   };

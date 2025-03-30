@@ -11,11 +11,11 @@ export const messages = pgTable("messages", {
   timestamp: text("timestamp").notNull(),
 });
 
-export const insertMessageSchema = createInsertSchema(messages).pick({
-  role: true,
-  content: true,
-  model: true,
-  timestamp: true,
+export const insertMessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string(),
+  model: z.string(),
+  timestamp: z.string()
 });
 
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
