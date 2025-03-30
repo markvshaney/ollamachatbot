@@ -25,13 +25,21 @@ export async function apiRequest(
       credentials: 'include' as RequestCredentials,
     };
     
-    console.log(`Making ${method} request to ${url}`, data ? { data } : '');
+    console.log(`Making ${method} request to ${url}`, data ? JSON.stringify(data, null, 2) : '(no data)');
+    
+    // Add a timestamp to see how long the request takes
+    const startTime = Date.now();
     const res = await fetch(url, options);
-
+    const endTime = Date.now();
+    console.log(`Request completed in ${endTime - startTime}ms with status ${res.status}`);
+    
+    // Check for non-OK responses
     if (!res.ok) {
       let errorText = '';
       try {
-        errorText = await res.text();
+        // Clone the response before reading it
+        const errorRes = res.clone();
+        errorText = await errorRes.text();
       } catch (e) {
         errorText = 'Could not read error response';
       }

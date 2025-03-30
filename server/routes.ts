@@ -7,11 +7,21 @@ import { z } from "zod";
 import { OLLAMA_API_URL, debugLog } from "./config";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Disable compression for API routes to avoid streaming issues
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      res.setHeader('Content-Encoding', 'identity');
+      res.setHeader('Transfer-Encoding', 'identity');
+    }
+    next();
+  });
+
   // API routes
   app.get("/api/messages", async (req, res) => {
     try {
       const messages = await storage.getMessages();
-      res.json(messages);
+      res.setHeader('Content-Type', 'application/json');
+      res.status(200).send(JSON.stringify(messages));
     } catch (error) {
       console.error("Error fetching messages:", error);
       res.status(500).json({ message: "Failed to fetch messages" });
@@ -29,21 +39,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const message = await storage.addMessage(messageData);
       console.log("Saved message:", JSON.stringify(message, null, 2));
       
-      res.status(201).json(message);
+      // Ensure proper response formatting
+      res.setHeader('Content-Type', 'application/json');
+      res.status(201).send(JSON.stringify(message));
     } catch (error) {
       if (error instanceof z.ZodError) {
         console.error("Validation error:", JSON.stringify(error.errors, null, 2));
-        res.status(400).json({ 
+        res.setHeader('Content-Type', 'application/json');
+        res.status(400).send(JSON.stringify({ 
           message: "Invalid message data", 
           errors: error.errors,
           receivedData: req.body 
-        });
+        }));
       } else {
         console.error("Error adding message:", error);
-        res.status(500).json({ 
+        res.setHeader('Content-Type', 'application/json');
+        res.status(500).send(JSON.stringify({ 
           message: "Failed to add message",
           error: error instanceof Error ? error.message : "Unknown error" 
-        });
+        }));
       }
     }
   });
@@ -51,10 +65,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/messages", async (req, res) => {
     try {
       await storage.clearMessages();
-      res.status(200).json({ message: "All messages cleared" });
+      res.setHeader('Content-Type', 'application/json');
+      res.status(200).send(JSON.stringify({ message: "All messages cleared" }));
     } catch (error) {
       console.error("Error clearing messages:", error);
-      res.status(500).json({ message: "Failed to clear messages" });
+      res.setHeader('Content-Type', 'application/json');
+      res.status(500).send(JSON.stringify({ message: "Failed to clear messages" }));
     }
   });
 

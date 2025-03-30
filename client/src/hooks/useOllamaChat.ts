@@ -98,14 +98,47 @@ export function useOllamaChat() {
 
   // Save message to the server
   const saveMessage = async (message: ChatMessage) => {
+    console.log("Beginning saveMessage function with data:", JSON.stringify(message, null, 2));
+    
     try {
-      console.log("Saving message:", message);
-      const response = await apiRequest('POST', '/api/messages', message);
-      const data = await response.json();
-      console.log("Message saved successfully:", data);
+      // Use fetch directly to have more control
+      const response = await fetch('/api/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
+      });
+      
+      console.log("API request completed, response status:", response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Error response:", errorText);
+        throw new Error(`Server returned ${response.status}: ${errorText || response.statusText}`);
+      }
+      
+      let data;
+      try {
+        const textResponse = await response.text();
+        console.log("Raw response text:", textResponse);
+        
+        // Only try to parse if there's content
+        if (textResponse) {
+          data = JSON.parse(textResponse);
+          console.log("Message saved successfully, parsed data:", data);
+        } else {
+          console.log("Empty response received");
+          data = {};
+        }
+      } catch (parseError) {
+        console.error("Failed to parse response:", parseError);
+        throw new Error("Invalid JSON response from server");
+      }
+      
       return data;
     } catch (error) {
-      console.error("Error saving message:", error);
+      console.error("Error in saveMessage function:", error);
       toast({
         title: "Error",
         description: error instanceof Error 
